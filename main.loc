@@ -1,0 +1,62 @@
+module tensor (*)
+
+import root
+
+--' A Nat-dimensioned dense vector (n-element 1D dense array)
+--' metavar: VECTOR
+type Vector (n :: Nat) a = List a
+
+--' A Nat-dimensioned dense matrix
+--' metavar: MATRIX
+type Matrix (m :: Nat) (n :: Nat) a
+
+-- Dense N-dimensional tensors (built-in types with row-major contiguous storage)
+type Tensor3 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) a
+type Tensor4 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) a
+type Tensor5 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) (d5 :: Nat) a
+
+
+-- Construction (zero-filled)
+zeros1 :: d1:Int -> Vector d1 a
+zeros2 :: d1:Int -> d2:Int -> Matrix d1 d2 a
+zeros3 :: d1:Int -> d2:Int -> d3:Int -> Tensor3 d1 d2 d3 a
+zeros4 :: d1:Int -> d2:Int -> d3:Int -> d4:Int -> Tensor4 d1 d2 d3 d4 a
+zeros5 :: d1:Int -> d2:Int -> d3:Int -> d4:Int -> d5:Int -> Tensor5 d1 d2 d3 d4 d5 a
+
+-- Construction (one-filled)
+ones1 :: d1:Int -> Vector d1 a
+ones2 :: d1:Int -> d2:Int -> Matrix d1 d2 a
+ones3 :: d1:Int -> d2:Int -> d3:Int -> Tensor3 d1 d2 d3 a
+ones4 :: d1:Int -> d2:Int -> d3:Int -> d4:Int -> Tensor4 d1 d2 d3 d4 a
+ones5 :: d1:Int -> d2:Int -> d3:Int -> d4:Int -> d5:Int -> Tensor5 d1 d2 d3 d4 d5 a
+
+-- Construction (filled with given value)
+fill1 :: a -> d1:Int -> Vector d1 a
+fill2 :: a -> d1:Int -> d2:Int -> Matrix d1 d2 a
+fill3 :: a -> d1:Int -> d2:Int -> d3:Int -> Tensor3 d1 d2 d3 a
+fill4 :: a -> d1:Int -> d2:Int -> d3:Int -> d4:Int -> Tensor4 d1 d2 d3 d4 a
+fill5 :: a -> d1:Int -> d2:Int -> d3:Int -> d4:Int -> d5:Int -> Tensor5 d1 d2 d3 d4 d5 a
+
+-- Identity matrix (square)
+identity :: n:Int -> Matrix n n a
+
+-- Matrix multiplication
+matmul :: Matrix m k a -> Matrix k n a -> Matrix m n a
+
+
+-- Packable wire forms for ranks >= 2.
+--
+-- Vector itself has NO Packable instance: it is a primitive concrete type in
+-- each language (std::vector in C++, numpy.ndarray in Python, R array). The
+-- type-level length `n` is phantom; the runtime form is the language's native
+-- flat numeric array. Routing the wire data through Vector (rather than the
+-- generic List `[a]`) avoids a Python list intermediate during deserialization
+-- -- numpy buffers travel zero-copy through the morloc numpy fast path.
+--
+-- Higher ranks carry a runtime dims-tuple alongside the flat Vector so that
+-- both static and dynamic dims work without a separate path.
+instance Packable ((Int, Int), Vector (d1 * d2) a) (Matrix d1 d2 a)
+instance Packable ((Int, Int, Int), Vector (d1 * d2 * d3) a) (Tensor3 d1 d2 d3 a)
+instance Packable ((Int, Int, Int, Int), Vector (d1 * d2 * d3 * d4) a) (Tensor4 d1 d2 d3 d4 a)
+instance Packable ((Int, Int, Int, Int, Int), Vector (d1 * d2 * d3 * d4 * d5) a) (Tensor5 d1 d2 d3 d4 d5 a)
+

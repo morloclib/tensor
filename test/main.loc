@@ -1,0 +1,247 @@
+module tensor.test (test)
+
+import tensor
+import root
+
+type Py => Int = "int"
+type Py => Str = "str"
+type Py => Real = "float"
+type Py => Bool = "bool"
+type Py => Tuple2 a b = "tuple" a b
+type Py => Tuple3 a b c = "tuple" a b c 
+type Py => Tuple4 a b c d = "tuple" a b c d
+type Py => Tuple5 a b c d e = "tuple" a b c d e
+type Py => List a = "list" a
+
+-- Tensor type mappings for the Python pool. The test framework's sourced
+-- Python helpers (testEqual, printMsg, printResult) receive the unpacked
+-- wire form `((dims), Vector N a)` over the wire from whichever language
+-- is under test. Without these mappings, the Python pool generated for
+-- non-Py language tests (tensor-cpp, tensor-r) would lack concrete types
+-- for the tensor families and fail to typecheck the test's let bindings
+-- (`pack ... :: Matrix ...`, etc.) -- even when Python never executes
+-- those bindings, the typechecker still needs concrete types for them.
+-- All map to "numpy.ndarray" as the Python runtime form.
+type Py => (Vector (n :: Nat) a) = "numpy.ndarray" n a
+type Py => (Matrix (m :: Nat) (n :: Nat) a) = "numpy.ndarray" m n a
+type Py => (Tensor3 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) a) = "numpy.ndarray" d1 d2 d3 a
+type Py => (Tensor4 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) a) = "numpy.ndarray" d1 d2 d3 d4 a
+type Py => (Tensor5 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) (d5 :: Nat) a) = "numpy.ndarray" d1 d2 d3 d4 d5 a
+
+-------------------------------------------------------------------------------
+-- Test framework
+--
+-- testEqual is a generic structural comparator (Str description, two values,
+-- and the running (fails, total) counter). Tests cross the boundary into
+-- Python with arguments already reduced to primitive wire forms (lists and
+-- tuples), so the framework needs no tensor-specific Python machinery.
+
+source Py from "tensor-test.py" ("testEqual", "printMsg", "printResult")
+testEqual
+    :: Str
+    -> a
+    -> a
+    -> (Int, Int)
+    -> (Int, Int)
+printMsg :: Str -> a -> a
+printResult :: (Int, Int) -> (Int, Int)
+
+-------------------------------------------------------------------------------
+-- Tensor probes via Packable
+--
+-- The Packable instance for each rank already provides the wire form
+-- `(dims, flat-data)`, which is exactly what tests need: checking dims and
+-- contents in one shot, and routing through morloc's primitive serialization
+-- so the test framework only ever sees tuples of ints and lists.
+--
+-- Vector is its own flat form (no Packable); use the value directly.
+-- Matrix..Tensor5 use `unpack` to get a (dims-tuple, flat list) pair.
+
+testGroup
+    :: Str
+    -> ((Int, Int) -> (Int, Int))
+    -> (Int, Int)
+    -> (Int, Int)
+testGroup msg tests = tests . printMsg msg
+
+passed :: (Int, Int) -> Bool
+passed t = 0 == (.0 t)
+
+test = runTests (0,0)
+
+-------------------------------------------------------------------------------
+-- Test suite
+
+runTests :: (Int, Int) -> Bool
+runTests =
+  ( passed
+  . printResult
+  . testGroup "Matrix multiplication (non-uniform)" testMatmulNonUniform
+  . testGroup "Matrix multiplication" testMatmul
+  . testGroup "Identity matrix" testIdentity
+  . testGroup "Fill" testFill
+  . testGroup "Ones" testOnes
+  . testGroup "Zeros" testZeros
+  . testGroup "Pack/unpack round-trip" testRoundtrip
+  )
+
+-------------------------------------------------------------------------------
+-- pack/unpack round-trip
+--
+-- A round-trip from a non-uniform sequence catches a class of bugs that
+-- uniform-value tests (zeros, ones, fill) cannot: any storage-order or
+-- index-permutation error in pack or unpack would corrupt the values'
+-- positions but not their multiset, and identical elements make the
+-- corruption invisible. With increasing values, every permutation differs.
+
+testRoundtrip :: (Int, Int) -> (Int, Int)
+testRoundtrip =
+  let v6  = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] :: Vector 6 Real
+      v8  = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] :: Vector 8 Real
+      v16 = [ 1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0
+            , 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0] :: Vector 16 Real
+      w23 = ((2, 3), v6) :: ((Int, Int), Vector 6 Real)
+      w222 = ((2, 2, 2), v8) :: ((Int, Int, Int), Vector 8 Real)
+      w2222 = ((2, 2, 2, 2), v16) :: ((Int, Int, Int, Int), Vector 16 Real)
+      m23 = pack w23 :: Matrix 2 3 Real
+      t3  = pack w222 :: Tensor3 2 2 2 Real
+      t4  = pack w2222 :: Tensor4 2 2 2 2 Real
+      -- Annotated expected wire forms. The Vector annotation keeps gt's
+      -- inner head as Vector when testEqual unifies its two `a` args, so
+      -- the Packable instance (which has Vector at the same position)
+      -- resolves under walk 1.
+      e23   = ((2, 3), v6)        :: ((Int, Int), Vector 6 Real)
+      e222  = ((2, 2, 2), v8)     :: ((Int, Int, Int), Vector 8 Real)
+      e2222 = ((2, 2, 2, 2), v16) :: ((Int, Int, Int, Int), Vector 16 Real)
+  in
+  ( testEqual "Matrix 2x3 round-trip"      (unpack m23) e23
+  . testEqual "Tensor3 2x2x2 round-trip"   (unpack t3)  e222
+  . testEqual "Tensor4 2x2x2x2 round-trip" (unpack t4)  e2222
+  )
+
+-------------------------------------------------------------------------------
+-- zeros
+
+testZeros :: (Int, Int) -> (Int, Int)
+testZeros =
+  let z6  = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]    :: Vector 6 Real
+      z8  = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] :: Vector 8 Real
+      e23  = ((2, 3), z6)    :: ((Int, Int), Vector 6 Real)
+      e222 = ((2, 2, 2), z8) :: ((Int, Int, Int), Vector 8 Real)
+  in
+  ( testEqual "zeros1 3" (zeros1 3 :: Vector 3 Real) [0.0, 0.0, 0.0]
+  . testEqual "zeros2 2 3" (unpack (zeros2 2 3 :: Matrix 2 3 Real)) e23
+  . testEqual "zeros3 2 2 2" (unpack (zeros3 2 2 2 :: Tensor3 2 2 2 Real)) e222
+  )
+
+-------------------------------------------------------------------------------
+-- ones
+
+testOnes :: (Int, Int) -> (Int, Int)
+testOnes =
+  let o6  = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0] :: Vector 6 Real
+      o8  = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] :: Vector 8 Real
+      e23  = ((2, 3), o6)    :: ((Int, Int), Vector 6 Real)
+      e222 = ((2, 2, 2), o8) :: ((Int, Int, Int), Vector 8 Real)
+  in
+  ( testEqual "ones1 3" (ones1 3 :: Vector 3 Real) [1.0, 1.0, 1.0]
+  . testEqual "ones2 2 3" (unpack (ones2 2 3 :: Matrix 2 3 Real)) e23
+  . testEqual "ones3 2 2 2" (unpack (ones3 2 2 2 :: Tensor3 2 2 2 Real)) e222
+  )
+
+-------------------------------------------------------------------------------
+-- fill
+
+testFill :: (Int, Int) -> (Int, Int)
+testFill =
+  let f4  = [-1.5, -1.5, -1.5, -1.5]                       :: Vector 4 Real
+      f8  = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]       :: Vector 8 Real
+      e22  = ((2, 2), f4)    :: ((Int, Int), Vector 4 Real)
+      e222 = ((2, 2, 2), f8) :: ((Int, Int, Int), Vector 8 Real)
+  in
+  ( testEqual "fill1 7.0 3" (fill1 7.0 3 :: Vector 3 Real) [7.0, 7.0, 7.0]
+  . testEqual "fill2 -1.5 2 2" (unpack (fill2 (-1.5) 2 2 :: Matrix 2 2 Real)) e22
+  . testEqual "fill3 0.5 2 2 2" (unpack (fill3 0.5 2 2 2 :: Tensor3 2 2 2 Real)) e222
+  )
+
+-------------------------------------------------------------------------------
+-- identity
+
+testIdentity :: (Int, Int) -> (Int, Int)
+testIdentity =
+  let i1 = [1.0]                                              :: Vector 1 Real
+      i4 = [1.0, 0.0, 0.0, 1.0]                               :: Vector 4 Real
+      i9 = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]      :: Vector 9 Real
+      e1 = ((1, 1), i1) :: ((Int, Int), Vector 1 Real)
+      e2 = ((2, 2), i4) :: ((Int, Int), Vector 4 Real)
+      e3 = ((3, 3), i9) :: ((Int, Int), Vector 9 Real)
+  in
+  ( testEqual "identity 1" (unpack (identity 1 :: Matrix 1 1 Real)) e1
+  . testEqual "identity 2" (unpack (identity 2 :: Matrix 2 2 Real)) e2
+  . testEqual "identity 3" (unpack (identity 3 :: Matrix 3 3 Real)) e3
+  )
+
+-------------------------------------------------------------------------------
+-- matmul
+
+testMatmul :: (Int, Int) -> (Int, Int)
+testMatmul =
+  let i9 = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] :: Vector 9 Real
+      o4 = [3.0, 3.0, 3.0, 3.0]                          :: Vector 4 Real
+      z8 = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]      :: Vector 8 Real
+      e3 = ((3, 3), i9) :: ((Int, Int), Vector 9 Real)
+      eO = ((2, 2), o4) :: ((Int, Int), Vector 4 Real)
+      eZ = ((2, 4), z8) :: ((Int, Int), Vector 8 Real)
+  in
+  ( testEqual "I @ I = I"
+        (unpack (matmul (identity 3 :: Matrix 3 3 Real) (identity 3 :: Matrix 3 3 Real))) e3
+  . testEqual "ones @ ones = 3*ones (2x3 * 3x2)"
+        (unpack (matmul (ones2 2 3 :: Matrix 2 3 Real) (ones2 3 2 :: Matrix 3 2 Real))) eO
+  . testEqual "zeros @ ones = zeros (2x3 * 3x4)"
+        (unpack (matmul (zeros2 2 3 :: Matrix 2 3 Real) (ones2 3 4 :: Matrix 3 4 Real))) eZ
+  )
+
+-------------------------------------------------------------------------------
+-- non-uniform matmul
+--
+-- These tests use distinct element values so the result depends on each
+-- element's position. A storage-order or transpose bug would produce a
+-- different (but still consistent-with-itself) answer, which would pass the
+-- uniform tests above but fail here.
+--
+-- A = [[1,2],[3,4]],  B = [[5,6],[7,8]]
+-- A @ B = [[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]]
+--
+-- A2 = [[1,2,3],[4,5,6]] (2x3), B2 = [[7,8],[9,10],[11,12]] (3x2)
+-- A2 @ B2 = [[1*7+2*9+3*11, 1*8+2*10+3*12],[4*7+5*9+6*11, 4*8+5*10+6*12]]
+--        = [[58,64],[139,154]]
+
+testMatmulNonUniform :: (Int, Int) -> (Int, Int)
+testMatmulNonUniform =
+  let v4a = [1.0, 2.0, 3.0, 4.0] :: Vector 4 Real
+      v4b = [5.0, 6.0, 7.0, 8.0] :: Vector 4 Real
+      v6  = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] :: Vector 6 Real
+      v6b = [7.0, 8.0, 9.0, 10.0, 11.0, 12.0] :: Vector 6 Real
+      w4a = ((2, 2), v4a) :: ((Int, Int), Vector 4 Real)
+      w4b = ((2, 2), v4b) :: ((Int, Int), Vector 4 Real)
+      w23 = ((2, 3), v6)  :: ((Int, Int), Vector 6 Real)
+      w32 = ((3, 2), v6b) :: ((Int, Int), Vector 6 Real)
+      a22 = pack w4a :: Matrix 2 2 Real
+      b22 = pack w4b :: Matrix 2 2 Real
+      c22 = matmul a22 b22 :: Matrix 2 2 Real
+      a23 = pack w23 :: Matrix 2 3 Real
+      b32 = pack w32 :: Matrix 3 2 Real
+      c22b = matmul a23 b32 :: Matrix 2 2 Real
+      -- Annotated expected wire forms (see comment in testRoundtrip).
+      eAB   = ((2, 2), [19.0, 22.0, 43.0, 50.0]
+                  :: Vector 4 Real)
+                  :: ((Int, Int), Vector 4 Real)
+      eA2B2 = ((2, 2), [58.0, 64.0, 139.0, 154.0]
+                  :: Vector 4 Real)
+                  :: ((Int, Int), Vector 4 Real)
+  in
+  ( testEqual "[[1,2],[3,4]] @ [[5,6],[7,8]] = [[19,22],[43,50]]"
+        (unpack c22) eAB
+  . testEqual "[[1,2,3],[4,5,6]] @ [[7,8],[9,10],[11,12]] = [[58,64],[139,154]]"
+        (unpack c22b) eA2B2
+  )

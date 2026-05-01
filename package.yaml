@@ -1,0 +1,11 @@
+name: tensor
+version: 0.1.0
+homepage: https://github.com/morloclib/tensor
+synopsis: Foundational dense tensor operations
+description: Construction (zeros, ones, fill, identity) and matrix multiplication for ranks 1-5.
+category: data
+license: MIT
+author: "Zebulun Arendsee"
+maintainer: "z@morloc.io"
+github: https://github.com/morloclib/tensor
+bug-reports: https://github.com/morloclib/tensor
