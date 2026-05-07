@@ -1,5 +1,5 @@
 name: tensor
-version: 0.1.0
+version: 0.2.0
 homepage: https://github.com/morloclib/tensor
 synopsis: Foundational dense tensor operations
 description: Construction (zeros, ones, fill, identity) and matrix multiplication for ranks 1-5.
