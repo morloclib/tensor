@@ -1,6 +1,7 @@
 module tensor.test (test)
 
 import tensor
+import vector
 import root
 
 type Py => Int = "int"
@@ -8,7 +9,7 @@ type Py => Str = "str"
 type Py => Real = "float"
 type Py => Bool = "bool"
 type Py => Tuple2 a b = "tuple" a b
-type Py => Tuple3 a b c = "tuple" a b c 
+type Py => Tuple3 a b c = "tuple" a b c
 type Py => Tuple4 a b c d = "tuple" a b c d
 type Py => Tuple5 a b c d e = "tuple" a b c d e
 type Py => List a = "list" a
@@ -54,8 +55,9 @@ printResult :: (Int, Int) -> (Int, Int)
 -- contents in one shot, and routing through morloc's primitive serialization
 -- so the test framework only ever sees tuples of ints and lists.
 --
--- Vector is its own flat form (no Packable); use the value directly.
--- Matrix..Tensor5 use `unpack` to get a (dims-tuple, flat list) pair.
+-- Vector is its own flat form (no Packable); use the value directly when
+-- exercising rank-1 in vector tests. Matrix..Tensor5 use `unpack` to get a
+-- (dims-tuple, flat list) pair.
 
 testGroup
     :: Str
@@ -129,8 +131,7 @@ testZeros =
       e23  = ((2, 3), z6)    :: ((Int, Int), Vector 6 Real)
       e222 = ((2, 2, 2), z8) :: ((Int, Int, Int), Vector 8 Real)
   in
-  ( testEqual "zeros1 3" (zeros1 3 :: Vector 3 Real) [0.0, 0.0, 0.0]
-  . testEqual "zeros2 2 3" (unpack (zeros2 2 3 :: Matrix 2 3 Real)) e23
+  ( testEqual "zeros2 2 3" (unpack (zeros2 2 3 :: Matrix 2 3 Real)) e23
   . testEqual "zeros3 2 2 2" (unpack (zeros3 2 2 2 :: Tensor3 2 2 2 Real)) e222
   )
 
@@ -144,8 +145,7 @@ testOnes =
       e23  = ((2, 3), o6)    :: ((Int, Int), Vector 6 Real)
       e222 = ((2, 2, 2), o8) :: ((Int, Int, Int), Vector 8 Real)
   in
-  ( testEqual "ones1 3" (ones1 3 :: Vector 3 Real) [1.0, 1.0, 1.0]
-  . testEqual "ones2 2 3" (unpack (ones2 2 3 :: Matrix 2 3 Real)) e23
+  ( testEqual "ones2 2 3" (unpack (ones2 2 3 :: Matrix 2 3 Real)) e23
   . testEqual "ones3 2 2 2" (unpack (ones3 2 2 2 :: Tensor3 2 2 2 Real)) e222
   )
 
@@ -159,8 +159,7 @@ testFill =
       e22  = ((2, 2), f4)    :: ((Int, Int), Vector 4 Real)
       e222 = ((2, 2, 2), f8) :: ((Int, Int, Int), Vector 8 Real)
   in
-  ( testEqual "fill1 7.0 3" (fill1 7.0 3 :: Vector 3 Real) [7.0, 7.0, 7.0]
-  . testEqual "fill2 -1.5 2 2" (unpack (fill2 (-1.5) 2 2 :: Matrix 2 2 Real)) e22
+  ( testEqual "fill2 -1.5 2 2" (unpack (fill2 (-1.5) 2 2 :: Matrix 2 2 Real)) e22
   . testEqual "fill3 0.5 2 2 2" (unpack (fill3 0.5 2 2 2 :: Tensor3 2 2 2 Real)) e222
   )
 
