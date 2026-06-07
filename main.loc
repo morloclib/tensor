@@ -5,12 +5,15 @@ import vector
 
 --' A Nat-dimensioned dense matrix
 --' metavar: MATRIX
-type Matrix (m :: Nat) (n :: Nat) a
+newtype Matrix (m :: Nat) (n :: Nat) a = ((Int, Int), Vector (m * n) a)
 
 -- Dense N-dimensional tensors (built-in types with row-major contiguous storage)
-type Tensor3 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) a
-type Tensor4 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) a
-type Tensor5 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) (d5 :: Nat) a
+newtype Tensor3 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) a
+  = ((Int, Int, Int), Vector (d1 * d2 * d3) a)
+newtype Tensor4 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) a
+  = ((Int, Int, Int, Int), Vector (d1 * d2 * d3 * d4) a)
+newtype Tensor5 (d1 :: Nat) (d2 :: Nat) (d3 :: Nat) (d4 :: Nat) (d5 :: Nat) a
+  = ((Int, Int, Int, Int, Int), Vector (d1 * d2 * d3 * d4 * d5) a)
 
 
 -- Construction (zero-filled)
@@ -36,6 +39,13 @@ identity :: n:Int -> Matrix n n a
 
 -- Matrix multiplication
 matmul :: Matrix m k a -> Matrix k n a -> Matrix m n a
+
+
+-- Eq across ranks >= 2 (rank-1 Eq lives in vector).
+instance Eq (Matrix d1 d2 a)
+instance Eq (Tensor3 d1 d2 d3 a)
+instance Eq (Tensor4 d1 d2 d3 d4 a)
+instance Eq (Tensor5 d1 d2 d3 d4 d5 a)
 
 
 -- Packable wire forms for ranks >= 2.
