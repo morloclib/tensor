@@ -3,69 +3,27 @@ module tensor.test (test)
 import tensor
 import vector
 import root
+import unittest
 
-type Py => Int = "int"
-type Py => Str = "str"
-type Py => Real = "float"
-type Py => Bool = "bool"
-type Py => Tuple2 a b = "tuple" a b
-type Py => Tuple3 a b c = "tuple" a b c
-type Py => Tuple4 a b c d = "tuple" a b c d
-type Py => Tuple5 a b c d e = "tuple" a b c d e
-type Py => List a = "list" a
+-- Tensor equality is computed in the language under test, on the Packable
+-- wire form `(dims, flat-data)`, and only the verdict crosses into the
+-- harness. Python never has to represent a tensor.
 
--------------------------------------------------------------------------------
--- Test framework
---
--- testEqual takes the equality result already computed in the language under
--- test. Passing a Bool over the wire keeps Python (the framework host) free
--- of any obligation to represent the values being tested -- only the verdict
--- crosses the language boundary.
-
-source Py from "tensor-test.py" ("testEqual", "printMsg", "printResult")
-testEqual
-    :: Str
-    -> Bool
-    -> (Int, Int)
-    -> (Int, Int)
-printMsg :: Str -> a -> a
-printResult :: (Int, Int) -> (Int, Int)
-
--------------------------------------------------------------------------------
--- Tensor probes via Packable
---
--- The Packable instance for each rank already provides the wire form
--- `(dims, flat-data)`, which is exactly what tests need: checking dims and
--- contents in one shot. Equality on the unpacked wire form runs in the
--- language under test, so the framework never sees the tensor values.
-
-testGroup
-    :: Str
-    -> ((Int, Int) -> (Int, Int))
-    -> (Int, Int)
-    -> (Int, Int)
-testGroup msg tests = tests . printMsg msg
-
-passed :: (Int, Int) -> Bool
-passed t = 0 == (.0 t)
-
-test = runTests (0,0)
+test = suite runTests
 
 -------------------------------------------------------------------------------
 -- Test suite
 
-runTests :: (Int, Int) -> Bool
+runTests :: Test
 runTests =
-  ( passed
-  . printResult
-  . testGroup "Matrix multiplication" testMatmul
-  . testGroup "Pack/unpack round-trip" testRoundtrip
+  ( group "Matrix multiplication" testMatmul
+  . group "Pack/unpack round-trip" testRoundtrip
   )
 
 -------------------------------------------------------------------------------
 -- pack/unpack round-trip
 
-testRoundtrip :: (Int, Int) -> (Int, Int)
+testRoundtrip :: Test
 testRoundtrip =
   let e6 = [1, 2, 3, 4, 5, 6] :: Vector 6 Real
       e8 = [1, 2, 3, 4, 5, 6, 7, 8] :: Vector 8 Real
@@ -75,20 +33,20 @@ testRoundtrip =
       t3 = ((2, 2, 2), [1, 2, 3, 4, 5, 6, 7, 8]) :: Tensor3 2 2 2 Real
       t4 = ((2, 2, 2, 2), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) :: Tensor4 2 2 2 2 Real
   in
-  ( testEqual "Matrix 2x3 round-trip"      (.1 (unpack a6) == e6)
-  . testEqual "Tensor3 2x2x2 round-trip"   (.1 (unpack t3) == e8)
-  . testEqual "Tensor4 2x2x2x2 round-trip" (.1 (unpack t4) == e16)
+  ( testTrue "Matrix 2x3 round-trip"      (.1 (unpack a6) == e6)
+  . testTrue "Tensor3 2x2x2 round-trip"   (.1 (unpack t3) == e8)
+  . testTrue "Tensor4 2x2x2x2 round-trip" (.1 (unpack t4) == e16)
   )
 
 -------------------------------------------------------------------------------
 -- matmul
 
-testMatmul :: (Int, Int) -> (Int, Int)
+testMatmul :: Test
 testMatmul =
   let a22 = ((2, 2), [1.0, 2.0, 3.0, 4.0]) :: Matrix 2 2 Real
   in
-  ( testEqual "I A = A"   (matmul (identity 2 :: Matrix 2 2 Real) a22 == a22)
-  . testEqual "I O3 = O3" (matmul (identity 3 :: Matrix 3 3 Real) (ones2 3 3) == (ones2 3 3))
-  . testEqual "I Z3 = Z3" (matmul (identity 3 :: Matrix 3 3 Real) (zeros2 3 3) == (zeros2 3 3))
-  . testEqual "I F3 = F3" (matmul (identity 3 :: Matrix 3 3 Real) (fill2 4.2 3 3) == (fill2 4.2 3 3))
+  ( testTrue "I A = A"   (matmul (identity 2 :: Matrix 2 2 Real) a22 == a22)
+  . testTrue "I O3 = O3" (matmul (identity 3 :: Matrix 3 3 Real) (ones2 3 3) == (ones2 3 3))
+  . testTrue "I Z3 = Z3" (matmul (identity 3 :: Matrix 3 3 Real) (zeros2 3 3) == (zeros2 3 3))
+  . testTrue "I F3 = F3" (matmul (identity 3 :: Matrix 3 3 Real) (fill2 4.2 3 3) == (fill2 4.2 3 3))
   )
