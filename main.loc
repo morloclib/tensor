@@ -4,7 +4,7 @@ import root
 import vector
 
 --' A Nat-dimensioned dense matrix
---' metavar: MATRIX
+--' @metavar MATRIX
 newtype Matrix (m :: Nat) (n :: Nat) a = ((Int, Int), Vector (m * n) a)
 
 -- Dense N-dimensional tensors (built-in types with row-major contiguous storage)
